@@ -18,7 +18,7 @@ object TableNoDB {
 
   def main(args: Array[String]): Unit = {
 
-    val spark:SparkSession=createSparkSession("IceBergeTable",true)
+    val spark:SparkSession=createSparkSession("IceBergeTable",iceberg = true,wh = false)
 
     spark.sql("select current_schema() as schema").show()
 
@@ -36,7 +36,12 @@ object TableNoDB {
 
     spark.sql("show tables").show()
 
-    val table:String="artemis.iceberg_simple"
+    val table:String="artemis.iceberg_spark_simple"
+
+
+    val exits: Boolean = spark.catalog.tableExists(table)
+
+    println(s"Table $table Exits $exits")
 
     var data: Seq[Row] = Seq(
       Row(1: Long, 1000371: Long, 1.8f: Float, 15.32: Double, "N": String),
@@ -54,6 +59,30 @@ object TableNoDB {
     )
     )
 
+    if (exits) {
+       data = Seq(
+        Row(1: Long, 1000371: Long, 1.8f: Float, 15.32: Double, "N": String,true:Boolean),
+        Row(2: Long, 1000372: Long, 2.5f: Float, 22.15: Double, "N": String,false:Boolean),
+        Row(2: Long, 1000373: Long, 0.9f: Float, 9.01: Double, "N": String,true:Boolean),
+        Row(1: Long, 1000374: Long, 8.4f: Float, 42.13: Double, "Y": String,false:Boolean)
+      )
+
+       schema = StructType(Array(
+        StructField("vendor_id", LongType, true),
+        StructField("trip_id", LongType, true),
+        StructField("trip_distance", FloatType, true),
+        StructField("fare_amount", DoubleType, true),
+        StructField("store_and_fwd_flag", StringType, true),
+        StructField("active", BooleanType, true)
+
+      )
+      )
+
+    }
+
+
+
+
     val rdd = spark.sparkContext.parallelize(data)
 
 
@@ -61,7 +90,22 @@ object TableNoDB {
 
     df.show()
 
-   df.writeTo(table).tableProperty("write.spark.accept-any-schema","true").createOrReplace()
+
+
+    if(!exits) {
+      println("Creating Table")
+
+      df.writeTo(table)
+        .tableProperty("write.spark.accept-any-schema", "true")
+        .tableProperty("location", "s3://vmware-euc-cloud/data-dir/temp/transforms/")
+        .createOrReplace()
+    }
+    else {
+      println("Mergning Schema")
+      df.writeTo(table).option("mergeSchema","true").append()
+    }
+
+
 
 
 
